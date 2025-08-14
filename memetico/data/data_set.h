@@ -14,9 +14,13 @@
 #include <fstream>
 #include <filesystem>
 #include <memetico/gpu/gpu_dataset.h>
+// temp if for testing
 #include <memetico/gpu/cuda.cuh>
 #include <memetico/helpers/rng.h>
 #include <memetico/helpers/text.h>
+#include <memetico/helpers/distance.h>
+// Eigen
+#include <Eigen/Dense>
 
 using namespace cusr;
 using namespace filesystem;
@@ -89,6 +93,19 @@ class DataSet {
         /** Names of the independent varaibles */
         static vector<string>   IVS;
 
+        // For Multi-Variable Derivatives
+        /** */
+        vector<vector<double>> app_grads;
+        
+        /** */
+        vector<vector<vector<double>>> app_hesses;
+        
+        /** */
+        vector<Eigen::ColPivHouseholderQR<Eigen::MatrixXd>> qr_decompositions;
+
+        /** */
+        vector<vector<size_t>> neighbor_indices;
+
         /** @brief Return filename for DataSet */
         string get_file()       { return filename; };
 
@@ -115,6 +132,28 @@ class DataSet {
 
         /** @brief Get indexes for a percentage of the DataSet uniformly and at random */
         vector<size_t> subset(float pct, bool to_GPU = true);
+
+        /**
+         * Multivariable Derivative Approximation Methods
+         */
+
+        /**KIERAN DESCRIPTION */
+        void compute_app_der_multiV();
+
+        /** */
+        pair<vector<double>, vector<vector<double>>> apply_FDS_on_data(size_t i);
+        
+        /** */
+        void compute_LS_FDS();
+
+        /** */
+        void compute_nearest_neighbors();
+
+        /** */
+        Eigen::MatrixXd set_up_linear_system_quad_2D(size_t j);
+
+        /** */
+        Eigen::MatrixXd set_up_linear_system_quad_3D(size_t j);
 
         // GPU specific 
 
@@ -468,6 +507,7 @@ class DataSet {
             return weights;
             
         }
+        
 
         /**
          */
@@ -509,6 +549,15 @@ class DataSet {
             vector<vector<double>> weights;
             return weights;
         }
+
+
+
+
+
+
+
+
+
 
     private: 
 

@@ -54,6 +54,9 @@ size_t          meme::DIVERSITY_COUNT = 3;
 size_t          meme::IFR = 0;
 string          meme::IN_DER = "exact";
 size_t          meme::MAX_DER_ORD = 3;
+// Least Squares Globals
+// To-do: Implement a way to set this in args
+size_t          meme::NUM_NEIGHBORS = 16;
 
 DynamicDepthType meme::DYNAMIC_DEPTH_TYPE = DynamicNone;
 

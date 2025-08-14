@@ -159,6 +159,8 @@ namespace meme {
     /** Index First Repetition */
     extern size_t           IFR;
 
+    // MultiV Globals
+    extern size_t          NUM_NEIGHBORS;
 }
 
 #endif

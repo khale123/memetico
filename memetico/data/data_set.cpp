@@ -271,3 +271,168 @@ void DataSet::csv(string file_name) {
         f << endl;
     }  
 }
+
+// We should run these functions in load() if the global variables are set, no idea why Guillaume did not do this
+void DataSet::compute_app_der_multiV() {
+    // Computes the approximate first and second order derivatives using finite differences
+    // To-do : Incorporate user control over order of derivatives and incorporate into DataSet::load()
+    compute_LS_FDS();
+    for (size_t i = 0; i < samples.size(); ++i) {
+        auto result = apply_FDS_on_data(i);
+        app_grads.push_back(result.first);
+        app_hesses.push_back(result.second);
+    }
+}
+
+pair<vector<double>, vector<vector<double>>> DataSet::apply_FDS_on_data(size_t i) {
+    // Construct constraints (f_diffs) for the linear system
+    vector<size_t> neighbors = neighbor_indices[i];
+    double response = y[i];
+    vector<double> f_diffs;
+    for (size_t& idx : neighbors) {
+        double neighbor_response = y[idx];
+        f_diffs.push_back(neighbor_response - response);
+    }
+    // Use Eigen to solve the linear system using the precomputed QR decomposition 
+    Eigen::VectorXd coeff_eig = qr_decompositions[i].solve(Eigen::Map<Eigen::VectorXd>(f_diffs.data(), f_diffs.size())).eval();
+    // Converts the Eigen vector to a standard vector
+    std::vector<double> coeffs(coeff_eig.data(), coeff_eig.data() + coeff_eig.size());
+    
+    // This section also uses magic numbers extensively because it is not generalized to N dimensions
+    // Construct gradient
+    vector<double> gradient;
+    if (coeffs.size() == 5) {
+        // 2D case
+        gradient.push_back(coeffs[0]);
+        gradient.push_back(coeffs[1]);
+    } else if (coeffs.size() == 9) {
+        // 3D case
+        gradient.push_back(coeffs[0]);
+        gradient.push_back(coeffs[1]);
+        gradient.push_back(coeffs[2]);
+    } else {
+        throw logic_error("Unsupported number of coefficients");
+    }
+    // Construct Hessian
+    vector<vector<double>> hessian;
+    if (coeffs.size() == 5) {
+        // 2D case
+        hessian = {
+            {2*coeffs[2], coeffs[3]},
+            {coeffs[3], 2*coeffs[4]}
+        };
+    } else if (coeffs.size() == 9) {
+        // 3D case
+        hessian = {
+            {2*coeffs[3], coeffs[6], coeffs[7]},
+            {coeffs[6], 2*coeffs[4], coeffs[8]},
+            {coeffs[7], coeffs[8], 2*coeffs[5]}
+        };
+    } else {
+        throw logic_error("Unsupported number of coefficients");
+    }
+    return make_pair(gradient, hessian);
+}
+
+// Designed to only be ran once per dataset
+void DataSet::compute_LS_FDS() {
+    compute_nearest_neighbors();
+    size_t dim = samples[0].size();
+    if (dim == 2) {
+        for (size_t i = 0; i < samples.size(); ++i) {
+            Eigen::MatrixXd A = set_up_linear_system_quad_2D(i);
+            Eigen::ColPivHouseholderQR<Eigen::MatrixXd> qr(A);
+            qr_decompositions.push_back(qr);
+        }
+    }
+    else if (dim == 3) {
+        for (size_t i = 0; i < samples.size(); ++i) {
+            Eigen::MatrixXd A = set_up_linear_system_quad_3D(i);
+            Eigen::ColPivHouseholderQR<Eigen::MatrixXd> qr(A);
+            qr_decompositions.push_back(qr);
+        }
+    }
+    else {
+        throw logic_error("LS Derivative Approximation only supports 2D and 3D data");
+    }
+}
+
+
+
+void DataSet::compute_nearest_neighbors(){
+    size_t num_features = samples[0].size();
+    neighbor_indices.resize(samples.size());
+    // Loop to perform KNN on each sample
+    for (size_t j = 0; j < samples.size(); ++j) {
+        vector<pair<double, size_t>> distances;
+        // Loop that implements KNN
+        for (size_t i = 0; i < samples.size(); ++i) {
+            if (j == i) continue;
+            double dist = euclidean_distance(samples[j], samples[i]);
+            distances.push_back(make_pair(dist, i));
+        }
+        // Partially sort distances to get the k smallest elements
+        size_t num_neighbors = std::min(distances.size(), static_cast<size_t>(meme::NUM_NEIGHBORS));
+        if (num_neighbors > 0 && distances.size() > 0) {
+            std::nth_element(distances.begin(), distances.begin() + num_neighbors, distances.end());
+        }
+        // Store the indices of the k nearest neighbors
+        for (size_t k = 0; k < num_neighbors; ++k) {
+            neighbor_indices[j].push_back(distances[k].second);
+        }
+    }
+}
+
+// Takes a sample index and returns the data matrix for fitting a 2D quadratic function to it
+Eigen::MatrixXd DataSet::set_up_linear_system_quad_2D(size_t j) {
+    vector<double> sample = samples[j]; 
+    vector<size_t> neighbors = neighbor_indices[j];
+    // 5 comes from dx, dy, dx^2, dy^2, dx*dy
+    // A future implementation goal is to general to N dimensions
+    Eigen::MatrixXd A(neighbors.size(), 5);
+    for (size_t i = 0; i < neighbors.size(); ++i) {
+        size_t idx = neighbors[i];
+        vector<double> neighbor = samples[idx];
+        double dx = neighbor[0] - sample[0];
+        double dy = neighbor[1] - sample[1];
+        // Fill the matrix with the appropriate values
+        // Code can be generalized to N dimensions which would avoid the magic numbers
+        A(i, 0) = dx;
+        A(i, 1) = dy;
+        A(i, 2) = dx * dx;
+        A(i, 3) = dx * dy;
+        A(i, 4) = dy * dy;
+    }
+    return A;
+}
+
+// Takes a sample index and returns the data matrix for fitting a 3D quadratic function to it
+Eigen::MatrixXd DataSet::set_up_linear_system_quad_3D(size_t j) {
+    vector<double> sample = samples[j]; 
+    vector<size_t> neighbors = neighbor_indices[j];
+    // 9 comes from dx, dy, dz, dx^2, dy^2, dz^2, dx*dy, dx*dz, dy*dz
+    // A future implementation goal is to general to N dimensions
+    Eigen::MatrixXd A(neighbors.size(), 9);
+    for (size_t i = 0; i < neighbors.size(); ++i) {
+        size_t idx = neighbors[i];
+        vector<double> neighbor = samples[idx];
+        double dx = neighbor[0] - sample[0];
+        double dy = neighbor[1] - sample[1];
+        double dz = neighbor[2] - sample[2];
+        // Fill the matrix with the appropriate values
+        // Code can be generalized to N dimensions which would avoid the magic numbers
+        A(i, 0) = dx;
+        A(i, 1) = dy;
+        A(i, 2) = dz;
+        A(i, 3) = dx * dx;
+        A(i, 4) = dy * dy;
+        A(i, 5) = dz * dz;
+        A(i, 6) = dx * dy;
+        A(i, 7) = dx * dz;
+        A(i, 8) = dy * dz;
+    }
+    return A;
+}
+
+
+

@@ -95,7 +95,8 @@
         "__string": "cpp",
         "__locale": "cpp",
         "target": "cpp",
-        "__config": "cpp"
+        "__config": "cpp",
+        "core": "cpp"
     },
     "testMate.cpp.test.executables": "filename.exe"
 }
