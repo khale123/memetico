@@ -15,6 +15,7 @@
 #include <memetico/model_base/model_meme.h>
 #include <memetico/gpu/cuda.cuh>
 #include <memetico/globals.h>
+#include <memetico/helpers/distance.h>
 #include "finitediff_templated.hpp"
 
 namespace objective {
@@ -26,6 +27,9 @@ double mse(MemeticModel<U>* model, DataSet* train, vector<size_t>& selected = ve
 
 template <class U>
 double mse_der(MemeticModel<U>* model, DataSet* train, vector<size_t>& selected = vector<size_t>());
+
+template <class U>
+double mse_der_multiV(MemeticModel<U>* model, DataSet* train, vector<size_t>& selected = vector<size_t>());
 
 template <class U>
 double mae(MemeticModel<U>* model, DataSet* train, vector<size_t>& selected = vector<size_t>());
@@ -59,6 +63,16 @@ vector<vector<double>> fornberg2(MemeticModel<U>* model, DataSet* train, vector<
 
 template <class U>
 vector<vector<double>> derivative(MemeticModel<U>* model, DataSet* train, vector<size_t>& selected = vector<size_t>());
+
+/** 
+ * Has similar functionality to fornberg method, evalutes the model and approximates its gradients and hessians
+*/
+template <class U>
+tuple<vector<double>, vector<vector<double>>, vector<vector<vector<double>>>> multiV_derivative(MemeticModel<U>* model, DataSet* train, vector<size_t>& selected = vector<size_t>()); 
+
+template <class U>
+tuple<vector<double>, vector<vector<double>>, vector<vector<vector<double>>>> LS_multiV(MemeticModel<U>* model, DataSet* train, vector<size_t>& selected = vector<size_t>());
+
 
 vector<double> s_rank(vector<double>& data);
 

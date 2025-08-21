@@ -30,5 +30,9 @@ RandInt         meme::RANDINT;
 
 // Derivative Globals
 size_t          meme::IFR = 0;
-string          meme::IN_DER = "exact";
+string          meme::IN_DER = "app-multiV";
 size_t          meme::MAX_DER_ORD = 3;
+
+// Least Squares Globals
+size_t          meme::NUM_NEIGHBORS = 16;
+bool            meme::NORMALIZATION_FLAG = false;

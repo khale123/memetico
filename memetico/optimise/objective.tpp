@@ -166,6 +166,95 @@ double objective::mse_der(MemeticModel<U>* model, DataSet* train, vector<size_t>
     return model->get_fitness();
 }
 
+
+
+/**
+ * mse_der_multiV
+ * essentially the same as mse_der, but uses distance functions to handle comparing gradients and hessians
+ */
+template <class U>
+double objective::mse_der_multiV(MemeticModel<U>* model, DataSet* train, vector<size_t>& selected ) {
+
+    auto start = chrono::system_clock::now();
+    if( !train->get_gpu() ) {
+	
+    // Packages predictions, gradients and hessians
+	std::tuple<vector<double>, vector<vector<double>>, vector<vector<vector<double>>>> Ypreds;
+
+	try {
+	    double error_sum = 0;
+	    double error;
+
+        if( meme::IN_DER == "app-multiV" )  Ypreds = LS_multiV(model, train, selected);
+        // THERE IS NO IMLEMENTATION FOR multiV_derivative yet!!
+        else                            Ypreds = multiV_derivative(model, train, selected);
+
+        auto& preds = std::get<0>(Ypreds);  // vector<double>
+        auto& grads = std::get<1>(Ypreds);  // vector<vector<double>>
+        auto& hesses = std::get<2>(Ypreds); // vector<vector<vector<double>>>
+
+        if (meme::NORMALIZATION_FLAG == true) {
+            // TODO: implement normalization of grads and hessians
+
+        }
+        else {
+
+            if( selected.size() == 0) {
+                for(size_t i = 0; i < preds.size(); i++) {
+                    // predictions
+                    error = add(preds[i], -train->y[i]);
+                    error = multiply(error, error);
+                    error_sum = add(error_sum, error);
+                    // gradients
+                    error = euclidean_distance(grads[i], train->app_grads[i]);
+                    error = multiply(error, error);
+                    error_sum = add(error_sum, error);
+                    // hessians
+                    error = frobenius_metric_matrix(hesses[i], train->app_hesses[i]);
+                    error = multiply(error, error);
+                    error_sum = add(error_sum, error);   
+                }
+            } 
+            
+            else {
+                for(size_t i = 0; i < preds.size(); i++) {
+                    // predictions
+                    error = add(preds[i], -train->y[selected[i]]);
+                    error = multiply(error, error);
+                    error_sum = add(error_sum, error);
+                    // gradients
+                    error = euclidean_distance(grads[i], train->app_grads[selected[i]]);
+                    error = multiply(error, error);
+                    error_sum = add(error_sum, error);
+                    // hessians
+                    error = frobenius_metric_matrix(hesses[i], train->app_hesses[selected[i]]);
+                    error = multiply(error, error);
+                    error_sum = add(error_sum, error);   
+                }
+            }
+        }
+	    model->set_error(error_sum / preds.size());
+	    model->set_penalty( 1+model->get_count_active()*meme::PENALTY );
+	    model->set_fitness( multiply(model->get_error(),model->get_penalty()) );
+	} catch (exception& e) {
+	    // cout << "[objective.tpp/mse_der] numerical exception" << endl;
+	    // model->print();
+	    model->set_error(numeric_limits<double>::max());
+	    model->set_penalty(numeric_limits<double>::max());
+	    model->set_fitness(numeric_limits<double>::max());
+	}
+    } else  {
+	model->set_error( cuda_error(model, train, selected) );
+	model->set_penalty( 1+model->get_count_active()*meme::PENALTY );
+	model->set_fitness( multiply(model->get_error(),model->get_penalty()) );
+    }
+    auto end = chrono::high_resolution_clock::now();
+    chrono::duration<double, milli> ms = end-start;
+    return model->get_fitness();
+}
+
+
+
 template <class U>
 double objective::mae(MemeticModel<U>* model, DataSet* train, vector<size_t>& selected ) {
 
@@ -842,6 +931,63 @@ vector<vector<double>> objective::derivative(MemeticModel<U>* model, DataSet* tr
 
     return Y;
 }
+
+// TODO: Implement forward recurrence algorithm for multiV derivatives and Hessian's?
+// Another idea is to just use a very high order derivative finite difference scheme
+template <class U>
+tuple<vector<double>, vector<vector<double>>, vector<vector<vector<double>>>> objective::multiV_derivative(MemeticModel<U>* model, DataSet* train, vector<size_t>& selected) {
+
+}
+
+// Like fornberg, uses approximation rule found in dataset object to approximate derivatives of CFR model
+template <class U>
+tuple<vector<double>, vector<vector<double>>, vector<vector<vector<double>>>> objective::LS_multiV(MemeticModel<U>* model, DataSet* train, vector<size_t>& selected) {
+    vector<double> predictions;
+    vector<vector<double>> pred_grads;
+    vector<vector<vector<double>>> pred_hesses;
+
+    // 100% training samples
+    if( selected.size() == 0) {
+
+        for(size_t i = 0; i < train->samples.size(); i++) {
+            predictions.push_back(model->evaluate(train->samples[i]));
+        }
+
+        for (size_t i = 0; i < train->samples.size(); i++) {
+            const vector<size_t> neighbors = train->neighbor_indices[i];
+            vector<double> fdiffs;
+            for (size_t j = 0; j < neighbors.size(); j++) {
+                double diff = predictions[neighbors[j]] - predictions[i];
+                fdiffs.push_back(diff);
+            }
+            auto grad_hess_pair = train->apply_FDS_on_arbitrary_response(i, fdiffs);
+            pred_grads.push_back(grad_hess_pair.first);
+            pred_hesses.push_back(grad_hess_pair.second);
+        }
+    }
+
+    else {
+        for(size_t i : selected) {
+            predictions.push_back(model->evaluate(train->samples[i]));
+        }
+
+        for (size_t i : selected) {
+            const vector<size_t> neighbors = train->neighbor_indices[i];
+            vector<double> fdiffs;
+            for (size_t j = 0; j < neighbors.size(); j++) {
+                double diff = predictions[neighbors[j]] - predictions[i];
+                fdiffs.push_back(diff);
+            }
+            auto grad_hess_pair = train->apply_FDS_on_arbitrary_response(i, fdiffs);
+            pred_grads.push_back(grad_hess_pair.first);
+            pred_hesses.push_back(grad_hess_pair.second);
+        }
+    }
+    return make_tuple(predictions, pred_grads, pred_hesses);
+}
+
+
+
 
 template <class U>
 vector<vector<double>> objective::fornberg(MemeticModel<U>* model, DataSet* train, vector<size_t>& selected) {

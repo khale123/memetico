@@ -110,6 +110,7 @@ namespace args {
         // With the derviative, it may make more sense to have an independent flag for 'to include derivative information'
         // which is a flag used in the different objective funtions, e.g. mse, mae, etc. to include the information 
         if( MemeticModel<DataType>::OBJECTIVE_NAME == "mse_der" )  MemeticModel<DataType>::OBJECTIVE = objective::mse_der<DataType>;
+        if( MemeticModel<DataType>::OBJECTIVE_NAME == "mse_der_multiV" )  MemeticModel<DataType>::OBJECTIVE = objective::mse_der_multiV<DataType>;
     
     }
 
@@ -184,7 +185,7 @@ namespace args {
                             -e --epsilon                    Error threshold for stopping condition
                                                             Defaults to 0
 
-                            -id --inder                     Input derivative mode (exact or app-fd)
+                            -id --inder                     Input derivative mode (exact, app-fd, or app-multiV)
                                                             Defaults to exact
 
                             -ifr --index-first-repetition   Index first repetition, 1 core = 1 repetition
@@ -207,6 +208,12 @@ namespace args {
 
                             -mdo, --max-der-ord             Maximum derivative order (compute derivatives up to this order)
                                                             Defaults to 1
+
+                            -nn --num-neighbors             Number of neighbors to consider in multiV derivative
+                                                            Defaults to 16
+
+                            -norm --normalization           Normalize errors in mse_der_multiV
+                                                            Defaults to false
 
                             -p --problem                    Problem name
 
@@ -320,6 +327,16 @@ namespace args {
         // Maximum derivative order
         arg_string = arg_value(argv, argv+argc, "-mdo", "--max-der-ord");
         if(arg_string != "")        meme::MAX_DER_ORD = stoi(arg_string);
+
+        // MultiV Added
+
+        // Number of neighbors
+        arg_string = arg_value(argv, argv+argc, "-nn", "--num-neighbors");
+        if(arg_string != "")    meme::NUM_NEIGHBORS = stoi(arg_string);
+
+        // Normalization flag
+        if(arg_exists(argv, argv+argc, "-norm", "--normalization"))
+            meme::NORMALIZATION_FLAG = true;
                
         // Master log
         meme::master_log = ofstream(meme::LOG_DIR+to_string(meme::SEED)+".Master.log");

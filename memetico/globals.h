@@ -161,6 +161,8 @@ namespace meme {
 
     // MultiV Globals
     extern size_t          NUM_NEIGHBORS;
+
+    extern bool            NORMALIZATION_FLAG;
 }
 
 #endif

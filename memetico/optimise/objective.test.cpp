@@ -209,10 +209,48 @@ inline ModelType frac_1() {
 
 }
 
+//Helper functions for processing grad and hessian data
+
+inline vector<vector<double>> get_test_data(string file_name) {
+    ifstream file(file_name);
+    string line;
+    vector<vector<double>> data;
+
+    while (getline(file, line)) {
+        stringstream ss(line);
+        string cell;
+        vector<double> row;
+        while (getline(ss, cell, ',')) {
+            row.push_back(stod(cell));
+        }
+        data.push_back(row);
+    }
+    return data;
+}
+
+inline vector<vector<vector<double>>> uncollapse_hesses(vector<vector<double>> data_set, size_t dim) {
+    vector<vector<vector<double>>> hesses;
+    for (size_t i = 0; i < data_set.size(); i++) {
+        vector<vector<double>> hess;
+        for (size_t j = 0; j < dim; j++) {
+            vector<double> row;
+            for (size_t k = 0; k < dim; k++) {
+                row.push_back(data_set[i][j * dim + k]);
+            }
+            hess.push_back(row);
+        }
+        hesses.push_back(hess);
+    }
+    return hesses;
+}
+
+
+
 TEST_CASE("Objective: mse on CPU") {
 
     RandInt ri = RandInt(42);
     RandReal rr = RandReal(42);
+
     RandInt::RANDINT = &ri;
     RandReal::RANDREAL = &rr;
 
@@ -929,5 +967,122 @@ TEST_CASE("Objective: mse_der ") {
     // See manual generation in derviatve_test sheet 
     double der = objective::mse_der(&m, &ds, selected);
     CHECK(der == doctest::Approx(2.3973849854).epsilon(1e-10) );
+
+}
+
+// Print a vector<double>
+inline void printVector(const vector<double>& v) {
+    cout << "[ ";
+    for (size_t i = 0; i < v.size(); i++) {
+        cout << v[i];
+        if (i + 1 < v.size()) cout << ", ";
+    }
+    cout << " ]" << endl;
+}
+
+// Print a vector<vector<double>>
+inline void printVector2D(const vector<vector<double>>& vv) {
+    cout << "[\n";
+    for (size_t i = 0; i < vv.size(); i++) {
+        cout << "  ";
+        printVector(vv[i]);
+    }
+    cout << "]" << endl;
+}
+
+TEST_CASE("Objective: mse_der_multiV") {
+
+    /* 
+     * 
+     */
+
+    RandInt ri = RandInt(42);
+    RandReal rr = RandReal(42);
+    RandInt::RANDINT = &ri;
+    RandReal::RANDREAL = &rr;
+
+    ModelType::IVS.clear();
+    ModelType::IVS.push_back("x1");
+    ModelType::IVS.push_back("x2");
+    ModelType::IVS.push_back("x3");
+
+    // t1(x) =  x1 + x2 + x3
+    // t2(x) =  x2 + x3
+    // t3(x) =  x1 - 10
+    // f(x) = t1(x) + t2(x) / t3(x) = (x1^2 + x1*x2 + x1*x3 - 10x1 - 9x2 - 9x3) / (x1-10)
+    ModelType m = build_cont_frac(
+        {
+            true, true, true, false,
+            false, true, true, false,
+            true, false, false, true
+        },
+        {
+            1, 1, 1, 0,
+            0, 1, 1, 0,
+            1, 0, 0, -10
+        },
+        {true, true, true, true},
+        4,
+        1
+    );
+
+    // Load data for dataset object
+    string fn("multiV_test_data/f4_data_4096.csv");
+    // x1, x2, x3, y
+    // 4096 uniformly sampled points in cube defined by [-1,1]^3
+    // with y = x1*x2*x3
+    DataSet ds = DataSet(fn);
+    ds.load();
+
+    // Check that the approximate gradients and hessians computed in the dataset are correct
+    // These files were generated using an implementation in Matlab of the same algorithm for approximated derivatives of multivariate functions on arbitrary grids
+    string grad_file("multiV_test_data/LS_grads_f4_4096.csv");
+    string hess_file("multiV_test_data/LS_hesses_f4_4096.csv");
+
+    vector<vector<double>> grad_test_data = get_test_data(grad_file);
+    vector<vector<double>> hess_raw = get_test_data(hess_file);
+    vector<vector<vector<double>>> hess_test_data = uncollapse_hesses(hess_raw, 3);
+    
+    for (size_t i = 0; i < ds.app_grads.size(); i++) {
+        double grad_err = euclidean_distance(ds.app_grads[i], grad_test_data[i]);
+        double hess_err = frobenius_metric_matrix(ds.app_hesses[i], hess_test_data[i]); 
+        CHECK(0.0 == doctest::Approx(grad_err).epsilon(1e-5));
+        CHECK(0.0 == doctest::Approx(hess_err).epsilon(1e-5));
+    }
+
+    // Generate approximate gradients and hessians using the model (which needs to occur sometimes in MSE_der_multiV)
+    // 100% of samples
+    vector<size_t> selected;
+    std::tuple<vector<double>, vector<vector<double>>, vector<vector<vector<double>>>> Ypreds;
+    Ypreds = objective::LS_multiV(&m, &ds, selected);
+    auto& preds = std::get<0>(Ypreds);  // vector<double>
+    auto& app_grads_model = std::get<1>(Ypreds);  // vector<vector<double>>
+    auto& app_hesses_model = std::get<2>(Ypreds); // vector<vector<vector<double>>>
+
+
+
+    // Check that the approximate gradients and hessians computed by applying the QR decompositions to the model are correct
+    // These files were also generated using Matlab for the particular continued fraction model specified above
+    string model_grad_file("multiV_test_data/LS_grads_test_model_4096.csv");
+    string model_hess_file("multiV_test_data/LS_hesses_test_model_4096.csv");
+    string model_response_file("multiV_test_data/test_model_responses.csv");
+
+    vector<vector<double>> grad_test_data_m = get_test_data(model_grad_file);
+    vector<vector<double>> hess_raw_m = get_test_data(model_hess_file);
+    vector<vector<vector<double>>> hess_test_data_m = uncollapse_hesses(hess_raw_m, 3);
+    vector<vector<double>> response_test_data = get_test_data(model_response_file);
+
+
+    for (size_t i = 0; i < ds.app_grads.size(); i++) {
+        double grad_err_m = euclidean_distance(app_grads_model[i], grad_test_data_m[i]);
+        double hess_err_m = frobenius_metric_matrix(app_hesses_model[i], hess_test_data_m[i]); 
+        CHECK(response_test_data[i][0] == doctest::Approx(preds[i]).epsilon(1e-5));
+        CHECK(0.0 == doctest::Approx(grad_err_m).epsilon(1e-5));
+        CHECK(0.0 == doctest::Approx(hess_err_m).epsilon(1e-5));
+    }
+
+    // Verifies that the mse_der_multiV function computes the correct MSE derivative (note that the mse_der_multiV can return a value effected by a penalty term which depends on the globals)
+    // This is done by comparing the result to a value computed using Matlab
+    CHECK(objective::mse_der_multiV(&m, &ds, selected) == doctest::Approx(5.828790706609269).epsilon(1e-10));
 
 }

@@ -19,7 +19,7 @@ CUFLAGS = -std=c++17 -O3 -g -ccbin mpic++ \
 LDFLAGS =  -lgomp
 
 # List the .cpp files required for compiling to .o objects, note we exlcude the .tpp template files
-LIST_HELPERS_CODE = 	memetico/helpers/rng
+LIST_HELPERS_CODE = 	memetico/helpers/rng memetico/helpers/distance
 LIST_MODEL_BASE_CODE = 	memetico/model_base/model
 LIST_MODELS_CODE = 		
 LIST_POP_CODE =			

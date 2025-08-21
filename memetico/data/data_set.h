@@ -106,6 +106,18 @@ class DataSet {
         /** */
         vector<vector<size_t>> neighbor_indices;
 
+        /** */
+        double min_grad_size;
+
+        /** */
+        double max_grad_size;
+
+        /** */
+        double min_hess_size;
+
+        /** */
+        double max_hess_size;
+
         /** @brief Return filename for DataSet */
         string get_file()       { return filename; };
 
@@ -143,6 +155,9 @@ class DataSet {
         /** */
         pair<vector<double>, vector<vector<double>>> apply_FDS_on_data(size_t i);
         
+        /** */
+        pair<vector<double>, vector<vector<double>>> apply_FDS_on_arbitrary_response(size_t i, vector<double> f_diffs);
+
         /** */
         void compute_LS_FDS();
 

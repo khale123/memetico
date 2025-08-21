@@ -13,7 +13,7 @@ CUFLAGS = -std=c++17 -O0 -g -ccbin mpic++ \
 LDFLAGS =  -lgomp
 
 # List the .cpp files required for compiling to .o objects, note we exlcude the .tpp template files 
-LIST_HELPERS_CODE = 	memetico/helpers/rng
+LIST_HELPERS_CODE = 	memetico/helpers/rng memetico/helpers/distance
 LIST_HELPERS_TEST = 	# To be implemented
 LIST_MODEL_BASE_CODE = 	memetico/model_base/model
 LIST_MODEL_BASE_TEST = 	memetico/model_base/element.test memetico/model_base/model.test
@@ -24,7 +24,7 @@ LIST_MODELS_TEST = 		memetico/models/cont_frac.test memetico/models/branch_cont_
 #LIST_POP_CODE =			# working.. may all be in tpp/header files
 #LIST_POP_TEST =			memetico/population/agent.test memetico/population/pop.test
 LIST_DATA_CODE =		memetico/data/data_set
-LIST_DATA_TEST =		memetico/data/data_set.test
+LIST_DATA_TEST =		memetico/data/data_set.test memetico/data/multiV.test
 LIST_GPU_CODE =			memetico/gpu/cuda
 LIST_GPU_TEST =			memetico/gpu/cuda.test
 LIST_OPTIMISE_CODE =	

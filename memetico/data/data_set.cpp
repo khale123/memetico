@@ -32,8 +32,12 @@ void DataSet::load() {
 
     if( get_gpu() )
         setup_gpu();
-}
 
+    if (meme::IN_DER == "app-multiV") {
+        compute_app_der_multiV();
+    }
+}
+// TODO: Generalize loading derivative information to multiple dimensions
 void DataSet::load_header(string line) {
     
     stringstream ss(line);
@@ -272,10 +276,8 @@ void DataSet::csv(string file_name) {
     }  
 }
 
-// We should run these functions in load() if the global variables are set, no idea why Guillaume did not do this
+// Computes the approximate first and second order derivatives of the underlying function in the data using least squares finite difference method
 void DataSet::compute_app_der_multiV() {
-    // Computes the approximate first and second order derivatives using finite differences
-    // To-do : Incorporate user control over order of derivatives and incorporate into DataSet::load()
     compute_LS_FDS();
     for (size_t i = 0; i < samples.size(); ++i) {
         auto result = apply_FDS_on_data(i);
@@ -293,6 +295,52 @@ pair<vector<double>, vector<vector<double>>> DataSet::apply_FDS_on_data(size_t i
         double neighbor_response = y[idx];
         f_diffs.push_back(neighbor_response - response);
     }
+    // Use Eigen to solve the linear system using the precomputed QR decomposition 
+    Eigen::VectorXd coeff_eig = qr_decompositions[i].solve(Eigen::Map<Eigen::VectorXd>(f_diffs.data(), f_diffs.size())).eval();
+    // Converts the Eigen vector to a standard vector
+    std::vector<double> coeffs(coeff_eig.data(), coeff_eig.data() + coeff_eig.size());
+    
+    // This section also uses magic numbers extensively because it is not generalized to N dimensions
+    // Construct gradient
+    vector<double> gradient;
+    if (coeffs.size() == 5) {
+        // 2D case
+        gradient.push_back(coeffs[0]);
+        gradient.push_back(coeffs[1]);
+    } else if (coeffs.size() == 9) {
+        // 3D case
+        gradient.push_back(coeffs[0]);
+        gradient.push_back(coeffs[1]);
+        gradient.push_back(coeffs[2]);
+    } else {
+        throw logic_error("Unsupported number of coefficients");
+    }
+    // Construct Hessian
+    vector<vector<double>> hessian;
+    if (coeffs.size() == 5) {
+        // 2D case
+        hessian = {
+            {2*coeffs[2], coeffs[3]},
+            {coeffs[3], 2*coeffs[4]}
+        };
+    } else if (coeffs.size() == 9) {
+        // 3D case
+        hessian = {
+            {2*coeffs[3], coeffs[6], coeffs[7]},
+            {coeffs[6], 2*coeffs[4], coeffs[8]},
+            {coeffs[7], coeffs[8], 2*coeffs[5]}
+        };
+    } else {
+        throw logic_error("Unsupported number of coefficients");
+    }
+    return make_pair(gradient, hessian);
+}
+
+
+pair<vector<double>, vector<vector<double>>> DataSet::apply_FDS_on_arbitrary_response(size_t i, vector<double> f_diffs) {
+    // Construct constraints (f_diffs) for the linear system
+    vector<size_t> neighbors = neighbor_indices[i];
+
     // Use Eigen to solve the linear system using the precomputed QR decomposition 
     Eigen::VectorXd coeff_eig = qr_decompositions[i].solve(Eigen::Map<Eigen::VectorXd>(f_diffs.data(), f_diffs.size())).eval();
     // Converts the Eigen vector to a standard vector
